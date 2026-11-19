@@ -1,0 +1,52 @@
+# copy to .github/workflows/ to enable
+name: Modules CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  module:
+    name: ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [sns-topic, sns-subscription, sqs, elasticache, elasticache-serverless]
+    defaults:
+      run:
+        working-directory: modules/${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.13"
+
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+      - name: terraform test
+        if: hashFiles(format('modules/{0}/tests/*.tftest.hcl', matrix.module)) != ''
+        run: terraform test
+
+      - uses: terraform-linters/setup-tflint@v4
+      - run: |
+          tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --config "$GITHUB_WORKSPACE/.tflint.hcl"
+
+  examples:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: [sns-sqs-fanout, elasticache, elasticache-serverless]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init -backend=false -input=false && terraform validate
+        working-directory: examples/${{ matrix.example }}
